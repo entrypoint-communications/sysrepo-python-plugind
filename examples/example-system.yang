@@ -1,0 +1,44 @@
+module example-system {
+  yang-version 1.1;
+  namespace "urn:example:system";
+  prefix ex-sys;
+
+  organization "Example Org";
+  description
+    "Example YANG module for sysrepo-python-plugind.
+
+     Demonstrates a minimal config/state split: an operator can set a
+     hostname, and the plugin reflects live uptime and kernel version in
+     the read-only state subtree.";
+
+  revision 2026-05-13 {
+    description "Initial revision.";
+  }
+
+  container system {
+    description "Top-level system configuration and state.";
+
+    leaf hostname {
+      type string {
+        length "1..253";
+      }
+      description "Administrative hostname of the device.";
+    }
+
+    container state {
+      config false;
+      description "Read-only operational state populated by the plugin.";
+
+      leaf uptime-seconds {
+        type uint64;
+        units "seconds";
+        description "System uptime in whole seconds.";
+      }
+
+      leaf kernel-version {
+        type string;
+        description "Kernel version string (equivalent to uname -r).";
+      }
+    }
+  }
+}

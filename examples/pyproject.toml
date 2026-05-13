@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "example-system-plugin"
+version = "0.1.0"
+description = "Example sysrepo-python-plugind plugin for the example-system YANG module"
+requires-python = ">=3.10"
+dependencies = ["sysrepo-python-plugind"]
+
+# This entry point is how sysrepo-python-plugind discovers the plugin.
+# The key ("example-system") is the plugin name used in python-plugin-order;
+# the value points to the class that implements SysrepoPlugin.
+[project.entry-points."sysrepo_python.plugins"]
+example-system = "example_system_plugin:ExampleSystemPlugin"
+
+[tool.setuptools]
+py-modules = ["example_system_plugin"]
