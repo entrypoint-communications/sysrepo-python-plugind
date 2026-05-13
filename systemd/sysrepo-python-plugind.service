@@ -1,0 +1,20 @@
+[Unit]
+Description=Sysrepo Python plugin daemon
+Documentation=https://github.com/...
+# Adjust After= if your plugins require additional services (e.g. a NETCONF server).
+After=network.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+# Install the YANG augmentation module on every start — idempotent, fast if already installed.
+ExecStartPre=/usr/bin/sysrepo-python-plugind-setup
+ExecStart=/usr/bin/sysrepo-python-plugind -v 2
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

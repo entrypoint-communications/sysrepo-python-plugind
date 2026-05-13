@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "sysrepo-python-plugind"
+version = "0.1.0"
+description = "Python plugin daemon for sysrepo (replacement for sysrepo-plugind)"
+readme = "README.rst"
+license = { text = "BSD-3-Clause" }
+requires-python = ">=3.10"
+dependencies = ["sysrepo"]
+
+[project.scripts]
+sysrepo-python-plugind = "sysrepo_python_plugind:main"
+sysrepo-python-plugind-setup = "sysrepo_python_plugind.install_yang:main"
+
+[project.urls]
+Repository = "https://github.com/..."
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sysrepo_python_plugind = ["yang/*.yang"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

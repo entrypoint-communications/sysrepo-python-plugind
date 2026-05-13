@@ -1,0 +1,54 @@
+module sysrepo-python-plugind {
+  yang-version 1.1;
+  namespace "urn:sysrepo:python-plugind";
+  prefix srpdpy;
+
+  import sysrepo-plugind {
+    prefix srpd;
+    revision-date 2022-08-26;
+  }
+
+  organization "sysrepo-python-plugind contributors";
+  description
+    "Augments sysrepo-plugind with Python-daemon-specific configuration
+     and state nodes.  This allows the Python daemon and the C daemon to
+     coexist: each manages only its own subtree and neither overwrites the
+     other's operational data.";
+
+  revision 2026-05-13 {
+    description "Initial revision.";
+    reference "https://github.com/...";
+  }
+
+  augment "/srpd:sysrepo-plugind" {
+    description "Python-daemon plugin ordering and loaded-plugin state.";
+
+    container python-plugin-order {
+      description
+        "Ordered list of Python plugin entry-point names.  Mirrors
+         plugin-order from the base module but applies only to the
+         Python daemon.";
+      leaf-list plugin {
+        type string;
+        ordered-by user;
+        description
+          "Entry-point name of a Python plugin.  A trailing file
+           extension (e.g. '.so') is stripped before comparison,
+           preserving compatibility with operator configs written for
+           the C daemon.";
+      }
+    }
+
+    container python-loaded-plugins {
+      config false;
+      description
+        "Names of Python plugins successfully initialised by the running
+         Python daemon.  Written to the operational datastore after all
+         plugins have been initialised.";
+      leaf-list plugin {
+        type string;
+        description "Entry-point name of a loaded Python plugin.";
+      }
+    }
+  }
+}
