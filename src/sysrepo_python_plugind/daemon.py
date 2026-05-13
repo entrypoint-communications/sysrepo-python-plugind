@@ -201,7 +201,7 @@ class PluginDaemon:
                     raise
         return discovered
 
-    def _init_plugins(self, sess: sysrepo.SysrepoSession) -> None:
+    def _init_plugins(self, sess: sysrepo.session.SysrepoSession) -> None:
         """Discover, sort, and initialise all plugins.
 
         Calls _discover_plugins(), reorders the result via sort_plugins(),
@@ -209,7 +209,7 @@ class PluginDaemon:
         are appended to self._plugins.
 
         Args:
-            sess (sysrepo.SysrepoSession): Active running-datastore session
+            sess (sysrepo.session.SysrepoSession): Active running-datastore session
                 passed to each plugin's init().
 
         Raises:
@@ -229,14 +229,14 @@ class PluginDaemon:
                 if self.fatal_fail:
                     raise
 
-    def _cleanup_plugins(self, sess: sysrepo.SysrepoSession) -> None:
+    def _cleanup_plugins(self, sess: sysrepo.session.SysrepoSession) -> None:
         """Call cleanup() on all initialised plugins in reverse init order.
 
         Exceptions from individual cleanup() calls are logged but do not
         prevent the remaining plugins from being cleaned up.
 
         Args:
-            sess (sysrepo.SysrepoSession): Active running-datastore session
+            sess (sysrepo.session.SysrepoSession): Active running-datastore session
                 passed to each plugin's cleanup().
         """
         for ep_name, inst in reversed(self._plugins):
@@ -249,7 +249,7 @@ class PluginDaemon:
     # ------------------------------------------------------------------
     # Operational datastore
 
-    def _publish_loaded(self, sess: sysrepo.SysrepoSession) -> None:
+    def _publish_loaded(self, sess: sysrepo.session.SysrepoSession) -> None:
         """Publish initialised plugin names to the sysrepo operational datastore.
 
         Switches to the operational datastore, clears any stale entries
@@ -258,7 +258,7 @@ class PluginDaemon:
         switches back to the running datastore.
 
         Args:
-            sess (sysrepo.SysrepoSession): Active sysrepo session;
+            sess (sysrepo.session.SysrepoSession): Active sysrepo session;
                 temporarily switched to operational and back to running.
 
         Raises:
@@ -273,8 +273,10 @@ class PluginDaemon:
 
         for ep_name, _ in self._plugins:
             sess.set_item(_LOADED_XPATH, ep_name)
+            LOG.info("add plugin %r to operational datastore", ep_name)
 
         sess.apply_changes()
+        LOG.info("operational store update complete")
         sess.switch_datastore("running")
         LOG.debug(
             "published %d plugin name(s) to operational datastore",

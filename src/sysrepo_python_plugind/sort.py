@@ -20,7 +20,7 @@ _ORDER_XPATH = (
 PluginList = list[tuple[str, "SysrepoPlugin"]]
 
 
-def sort_plugins(session: sysrepo.SysrepoSession, plugins: PluginList) -> PluginList:
+def sort_plugins(session: sysrepo.session.SysrepoSession, plugins: PluginList) -> PluginList:
     """Reorder plugins according to the operator-configured plugin order.
 
     Reads the ``python-plugin-order`` leaf-list from the sysrepo running
@@ -32,7 +32,7 @@ def sort_plugins(session: sysrepo.SysrepoSession, plugins: PluginList) -> Plugin
     ``sysrepo/src/executables/srpd_common.c``.
 
     Args:
-        session (sysrepo.SysrepoSession): Active running-datastore session
+        session (sysrepo.session.SysrepoSession): Active running-datastore session
             used to read the python-plugin-order configuration.
         plugins (PluginList): Discovered (entry-point-name, instance) pairs
             in discovery order.  The input list is not modified.

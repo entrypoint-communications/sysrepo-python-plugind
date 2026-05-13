@@ -23,7 +23,7 @@ class SysrepoPlugin(ABC):
     """
 
     @abstractmethod
-    def init(self, session: sysrepo.SysrepoSession) -> None:
+    def init(self, session: sysrepo.session.SysrepoSession) -> None:
         """Initialise the plugin at daemon startup.
 
         Called once after plugin ordering and before ``sd_notify("READY=1")``.
@@ -31,7 +31,7 @@ class SysrepoPlugin(ABC):
         session is on ``SR_DS_RUNNING`` and is shared with all other plugins.
 
         Args:
-            session (sysrepo.SysrepoSession): Active running-datastore
+            session (sysrepo.session.SysrepoSession): Active running-datastore
                 session shared across all plugins.
 
         Raises:
@@ -40,7 +40,7 @@ class SysrepoPlugin(ABC):
                 plugin is skipped and the next one is attempted.
         """
 
-    def cleanup(self, session: sysrepo.SysrepoSession) -> None:
+    def cleanup(self, session: sysrepo.session.SysrepoSession) -> None:
         """Clean up plugin resources at daemon shutdown.
 
         Called once in reverse init order after a stop signal is received.
@@ -51,6 +51,6 @@ class SysrepoPlugin(ABC):
         The default implementation does nothing.
 
         Args:
-            session (sysrepo.SysrepoSession): Active running-datastore
+            session (sysrepo.session.SysrepoSession): Active running-datastore
                 session shared across all plugins.
         """
