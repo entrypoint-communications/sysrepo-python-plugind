@@ -13,6 +13,16 @@ _MODULE_NAME = "sysrepo-python-plugind"
 
 
 def main() -> int:
+    """Install or upgrade the sysrepo-python-plugind YANG augmentation module.
+
+    Checks whether the module is already installed via ``sysrepoctl --list``
+    and either skips (already installed, no ``--force``), installs (first
+    run), or upgrades (``--force``) using ``sysrepoctl``.
+
+    Returns:
+        int: 0 on success or when already installed, non-zero if
+            ``sysrepoctl`` exits with an error.
+    """
     parser = argparse.ArgumentParser(
         prog="sysrepo-python-plugind-setup",
         description="Install the sysrepo-python-plugind YANG augmentation module.",
@@ -55,6 +65,14 @@ def main() -> int:
 
 
 def _is_installed() -> bool:
+    """Check whether the sysrepo-python-plugind YANG module is installed.
+
+    Runs ``sysrepoctl --list`` and searches the output for the module name.
+
+    Returns:
+        bool: True if the module appears in ``sysrepoctl`` output, False
+            otherwise or if ``sysrepoctl`` itself fails.
+    """
     result = subprocess.run(
         ["sysrepoctl", "--list"],
         capture_output=True,

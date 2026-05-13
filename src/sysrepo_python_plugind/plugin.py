@@ -7,40 +7,50 @@ import sysrepo
 
 
 class SysrepoPlugin(ABC):
-    """
-    Base class for sysrepo Python plugins loaded by sysrepo-python-plugind.
+    """Abstract base class for sysrepo Python plugins.
 
-    Install a plugin by declaring an entry point in your package:
+    Plugins are discovered by sysrepo-python-plugind via the
+    ``sysrepo_python.plugins`` entry point group.  Declare a plugin in
+    your package's ``pyproject.toml``::
 
         [project.entry-points."sysrepo_python.plugins"]
         my-plugin = "my_package.plugin:MyPlugin"
 
-    The daemon instantiates the class (no constructor arguments), calls
-    init() at startup, and cleanup() at shutdown.  State that would be
-    stored in sysrepo-plugind's void *private_data is stored as normal
-    instance attributes here.
+    The daemon instantiates the class with no arguments, calls
+    :meth:`init` at startup (after plugin ordering), and :meth:`cleanup`
+    at shutdown in reverse init order.  State that the C daemon stored in
+    ``void *private_data`` should be stored as instance attributes.
     """
 
     @abstractmethod
     def init(self, session: sysrepo.SysrepoSession) -> None:
-        """
-        Called once at daemon startup, after plugin ordering.
+        """Initialise the plugin at daemon startup.
 
-        Register subscriptions, allocate resources, and store any
-        persistent state as instance attributes.  The session operates
-        on SR_DS_RUNNING.
+        Called once after plugin ordering and before ``sd_notify("READY=1")``.
+        Register sysrepo subscriptions and allocate resources here.  The
+        session is on ``SR_DS_RUNNING`` and is shared with all other plugins.
 
-        Raising an exception rejects this plugin.  If the daemon was
-        started with --fatal-plugin-fail the whole daemon exits;
-        otherwise the next plugin is attempted.
+        Args:
+            session (sysrepo.SysrepoSession): Active running-datastore
+                session shared across all plugins.
+
+        Raises:
+            Exception: Signals rejection of this plugin.  With
+                ``--fatal-plugin-fail`` the daemon exits; otherwise this
+                plugin is skipped and the next one is attempted.
         """
 
     def cleanup(self, session: sysrepo.SysrepoSession) -> None:
-        """
-        Called once at daemon shutdown, in reverse init order.
+        """Clean up plugin resources at daemon shutdown.
 
-        Subscriptions registered on the session are automatically
-        cleaned up when the session stops, so this only needs to
-        release external resources (file handles, network connections,
-        etc.).  The default implementation does nothing.
+        Called once in reverse init order after a stop signal is received.
+        Sysrepo subscriptions created on the session are automatically
+        released when the session closes, so this method only needs to
+        release external resources (file handles, network connections, etc.).
+
+        The default implementation does nothing.
+
+        Args:
+            session (sysrepo.SysrepoSession): Active running-datastore
+                session shared across all plugins.
         """

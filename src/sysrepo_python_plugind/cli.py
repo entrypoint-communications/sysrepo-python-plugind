@@ -23,6 +23,15 @@ _LOG_LEVELS = {
 
 
 def main() -> int:
+    """Parse CLI arguments and run the sysrepo Python plugin daemon.
+
+    Parses ``-d``, ``-v``, ``-p``, and ``-f`` flags (mirroring the C
+    sysrepo-plugind), configures logging, creates a PluginDaemon, and
+    either daemonizes or runs in the foreground.
+
+    Returns:
+        int: Exit code; 0 on success, 1 on error.
+    """
     parser = argparse.ArgumentParser(
         prog="sysrepo-python-plugind",
         description="Sysrepo Python plugin daemon",
@@ -71,6 +80,20 @@ def main() -> int:
 
 # ------------------------------------------------------------------------------
 def _run_with_pid(daemon: PluginDaemon, pid_path: str, debug: bool) -> int:
+    """Run the daemon with a PID file, handling lock failure gracefully.
+
+    Opens the PID file lock before daemonizing so that a second invocation
+    fails immediately with a clear error message.
+
+    Args:
+        daemon (PluginDaemon): Configured daemon instance to run.
+        pid_path (str): Filesystem path for the PID file.
+        debug (bool): If True, skip daemonization and stay in foreground.
+
+    Returns:
+        int: Exit code from daemon.run(), or 1 if the PID file is already
+            locked by another instance.
+    """
     try:
         with PidFile(pid_path) as pid_file:
             if not debug:
@@ -83,6 +106,15 @@ def _run_with_pid(daemon: PluginDaemon, pid_path: str, debug: bool) -> int:
 
 
 def _configure_logging(debug: bool, level: int) -> None:
+    """Configure Python and sysrepo logging.
+
+    In debug mode logs to stderr; otherwise routes to syslog under the
+    application name ``'sysrepo-python-plugind'``.
+
+    Args:
+        debug (bool): If True, log to stderr; otherwise log to syslog.
+        level (int): Python logging level (e.g. ``logging.INFO``).
+    """
     handler = logging.StreamHandler()
     handler.setLevel(level)
     logging.getLogger().addHandler(handler)
@@ -99,11 +131,12 @@ def _configure_logging(debug: bool, level: int) -> None:
 
 
 def _daemonize() -> None:
-    """
-    Standard double-fork daemonization.
+    """Daemonize the current process using the standard double-fork technique.
 
-    File descriptors other than stdin/stdout/stderr are left open so that
-    a PidFile opened before this call remains valid in the child.
+    After the second fork the process is in its own session, has no
+    controlling terminal, and has stdin/stdout/stderr redirected to
+    /dev/null.  File descriptors beyond stderr are left open so that a
+    PidFile lock opened before this call survives in the child process.
     """
     # First fork: become session leader's child.
     pid = os.fork()

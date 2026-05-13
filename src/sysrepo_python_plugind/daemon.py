@@ -31,10 +31,18 @@ _LOADED_CONTAINER = (
 
 
 class PluginDaemon:
-    """
-    Python equivalent of sysrepo-plugind.
+    """Python equivalent of sysrepo-plugind.
 
-    Lifecycle::
+    Loads Python plugins via entry points, manages their lifecycle (init,
+    run, cleanup), and publishes loaded-plugin state to the sysrepo
+    operational datastore.
+
+    Args:
+        fatal_fail (bool): If True, a plugin init() failure aborts the
+            entire daemon.  If False (default), the failing plugin is
+            skipped and the remaining plugins are attempted.
+
+    Example::
 
         daemon = PluginDaemon(fatal_fail=False)
         with PidFile("/run/srpy-plugind.pid") as pid_file:
@@ -54,10 +62,20 @@ class PluginDaemon:
     # Public entry point
 
     def run(self, pid_file: Optional[PidFile] = None) -> int:
-        """
-        Run the daemon; block until a termination signal is received.
+        """Run the daemon; block until a termination signal is received.
 
-        Returns 0 on clean shutdown, 1 on error.
+        Opens a sysrepo connection, initialises all discovered plugins,
+        publishes the loaded-plugins list to the operational datastore,
+        notifies systemd, and then waits for a stop signal before cleaning
+        up.
+
+        Args:
+            pid_file (PidFile, optional): If provided, write() is called
+                after all plugins are initialised so the file contains the
+                daemonized child's PID.
+
+        Returns:
+            int: 0 on clean shutdown, 1 if a fatal error occurred.
         """
         self._setup_signals()
         self._start_event_loop()
@@ -90,6 +108,13 @@ class PluginDaemon:
     # Signal handling
 
     def _setup_signals(self) -> None:
+        """Register signal handlers matching the C sysrepo-plugind behaviour.
+
+        SIGINT, SIGTERM, SIGQUIT, SIGABRT, and SIGHUP trigger a graceful
+        shutdown.  A second signal while shutdown is already in progress
+        calls sys.exit(1).  SIGPIPE, SIGTSTP, SIGTTIN, and SIGTTOU are
+        ignored.
+        """
         def _handler(sig: int, _frame) -> None:
             if self._stop.is_set():
                 # Second signal while already shutting down → hard exit.
@@ -113,6 +138,14 @@ class PluginDaemon:
     # asyncio event loop
 
     def _start_event_loop(self) -> None:
+        """Create and start an asyncio event loop in a background daemon thread.
+
+        The loop is set as the thread-local event loop via
+        asyncio.set_event_loop() before any plugin init() calls, so plugins
+        that use asyncio_register=True subscriptions can rely on
+        asyncio.get_event_loop() returning a running loop without managing
+        one themselves.
+        """
         self._loop = asyncio.new_event_loop()
         # Make the loop visible to asyncio.get_event_loop() in plugin init().
         asyncio.set_event_loop(self._loop)
@@ -125,6 +158,11 @@ class PluginDaemon:
         LOG.debug("asyncio event loop started")
 
     def _stop_event_loop(self) -> None:
+        """Signal the asyncio event loop to stop and join its thread.
+
+        Safe to call if the loop was never started.  Waits up to 5 seconds
+        for the loop thread to exit before returning.
+        """
         if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._loop.stop)
         if self._loop_thread:
@@ -135,6 +173,18 @@ class PluginDaemon:
     # Plugin lifecycle
 
     def _discover_plugins(self) -> PluginList:
+        """Discover all installed plugins via the sysrepo_python.plugins entry point group.
+
+        Loads each entry point, verifies it is a SysrepoPlugin subclass,
+        and instantiates it.
+
+        Returns:
+            PluginList: (entry-point-name, instance) pairs in discovery order.
+
+        Raises:
+            Exception: Re-raised from ep.load() or instantiation when
+                fatal_fail is True; otherwise logged and skipped.
+        """
         discovered: PluginList = []
         for ep in entry_points(group="sysrepo_python.plugins"):
             try:
@@ -152,6 +202,20 @@ class PluginDaemon:
         return discovered
 
     def _init_plugins(self, sess: sysrepo.SysrepoSession) -> None:
+        """Discover, sort, and initialise all plugins.
+
+        Calls _discover_plugins(), reorders the result via sort_plugins(),
+        then calls init() on each plugin.  Successfully initialised plugins
+        are appended to self._plugins.
+
+        Args:
+            sess (sysrepo.SysrepoSession): Active running-datastore session
+                passed to each plugin's init().
+
+        Raises:
+            Exception: Re-raised from plugin init() when fatal_fail is True;
+                otherwise logged and the plugin is skipped.
+        """
         plugins = self._discover_plugins()
         plugins = sort_plugins(sess, plugins)
 
@@ -166,6 +230,15 @@ class PluginDaemon:
                     raise
 
     def _cleanup_plugins(self, sess: sysrepo.SysrepoSession) -> None:
+        """Call cleanup() on all initialised plugins in reverse init order.
+
+        Exceptions from individual cleanup() calls are logged but do not
+        prevent the remaining plugins from being cleaned up.
+
+        Args:
+            sess (sysrepo.SysrepoSession): Active running-datastore session
+                passed to each plugin's cleanup().
+        """
         for ep_name, inst in reversed(self._plugins):
             try:
                 inst.cleanup(sess)
@@ -177,10 +250,20 @@ class PluginDaemon:
     # Operational datastore
 
     def _publish_loaded(self, sess: sysrepo.SysrepoSession) -> None:
-        """
-        Publish the list of successfully initialised plugins to the
-        operational datastore under the augmented sysrepo-python-plugind
-        container, leaving the C daemon's loaded-plugins node untouched.
+        """Publish initialised plugin names to the sysrepo operational datastore.
+
+        Switches to the operational datastore, clears any stale entries
+        under the python-loaded-plugins container, writes one leaf-list
+        entry per successfully initialised plugin, applies changes, then
+        switches back to the running datastore.
+
+        Args:
+            sess (sysrepo.SysrepoSession): Active sysrepo session;
+                temporarily switched to operational and back to running.
+
+        Raises:
+            sysrepo.SysrepoNotFoundError: Caught internally when clearing
+                stale entries on first run; not propagated.
         """
         sess.switch_datastore("operational")
         try:
@@ -201,7 +284,15 @@ class PluginDaemon:
 
 # ------------------------------------------------------------------------------
 def _sd_notify(state: str) -> None:
-    """Send a state notification to systemd if NOTIFY_SOCKET is set."""
+    """Send a state notification to systemd via the NOTIFY_SOCKET.
+
+    Does nothing if the NOTIFY_SOCKET environment variable is not set.
+    Suppresses OSError (e.g. if the socket path is stale or invalid).
+
+    Args:
+        state (str): Notification string, e.g. ``'READY=1'`` or
+            ``'STOPPING=1'``.
+    """
     sock_path = os.environ.get("NOTIFY_SOCKET", "")
     if not sock_path:
         return

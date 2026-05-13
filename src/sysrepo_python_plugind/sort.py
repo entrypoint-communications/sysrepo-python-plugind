@@ -21,24 +21,31 @@ PluginList = list[tuple[str, "SysrepoPlugin"]]
 
 
 def sort_plugins(session: sysrepo.SysrepoSession, plugins: PluginList) -> PluginList:
-    """
-    Reorder *plugins* according to the operator-configured plugin-order.
+    """Reorder plugins according to the operator-configured plugin order.
 
-    Mirrors srpd_sort_plugins() from sysrepo/src/executables/srpd_common.c:
+    Reads the ``python-plugin-order`` leaf-list from the sysrepo running
+    datastore and performs a stable partition: configured plugins are moved
+    to the front in YANG list order; unconfigured plugins retain their
+    original discovery order at the end.
 
-    * Read the leaf-list at /sysrepo-plugind:sysrepo-plugind/
-      sysrepo-python-plugind:python-plugin-order/plugin from the running
-      datastore (ordered-by user).
-    * For each name in that list, find the matching plugin in *plugins* and
-      move it to the front, preserving relative YANG order.
-    * Plugins not mentioned in the YANG list keep their original discovery
-      order and appear after all ordered plugins.
-    * Names in the YANG list that don't match any loaded plugin are silently
-      ignored (same behaviour as the C daemon).
+    Mirrors ``srpd_sort_plugins()`` from
+    ``sysrepo/src/executables/srpd_common.c``.
 
-    File extensions in the configured name are stripped before comparison so
-    that operators familiar with the C daemon can reuse entries like
-    "my_plugin.so".
+    Args:
+        session (sysrepo.SysrepoSession): Active running-datastore session
+            used to read the python-plugin-order configuration.
+        plugins (PluginList): Discovered (entry-point-name, instance) pairs
+            in discovery order.  The input list is not modified.
+
+    Returns:
+        PluginList: Reordered (entry-point-name, instance) pairs.
+            Configured plugins appear first in YANG list order; remaining
+            plugins follow in their original discovery order.
+
+    Raises:
+        sysrepo.SysrepoNotFoundError: Caught internally when no
+            plugin-order is configured; treated as an empty list and the
+            original order is returned unchanged.
     """
     try:
         # String(Value, str) — each item IS a Python str already.
@@ -67,6 +74,18 @@ def sort_plugins(session: sysrepo.SysrepoSession, plugins: PluginList) -> Plugin
 
 
 def _strip_ext(name: str) -> str:
-    """Strip the last file extension, if any (e.g. 'foo.so' → 'foo')."""
+    """Strip the last file extension from a plugin name, if any.
+
+    Used to normalise operator-configured names (e.g. ``'my_plugin.so'``)
+    to match Python entry-point names (e.g. ``'my_plugin'``), preserving
+    compatibility with operator configs written for the C daemon.
+
+    Args:
+        name (str): Plugin name, optionally including a file extension.
+
+    Returns:
+        str: Name with the last dot-suffix removed, or the original name
+            if no dot is present.
+    """
     dot = name.rfind(".")
     return name[:dot] if dot >= 0 else name
