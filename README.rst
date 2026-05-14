@@ -123,12 +123,12 @@ Running the daemon
 
 CLI flags mirror those of the C ``sysrepo-plugind``:
 
-==========  ===============================================================
-``-d``      Stay in foreground; log to stderr instead of syslog
+============  ===================================================================
+``-d``        Stay in foreground; log to stderr instead of syslog
 ``-v LEVEL``  Verbosity: 0=ERROR 1=WARNING 2=INFO 3=DEBUG (default: 2)
 ``-p PATH``   Write PID file at PATH
-``-f``      Exit if any plugin fails to initialise (default: skip and continue)
-==========  ===============================================================
+``-f``        Exit if any plugin fails to initialise (default: skip and continue)
+============  ===================================================================
 
 
 Plugin ordering
