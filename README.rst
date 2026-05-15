@@ -20,7 +20,7 @@ Requirements
 
 - Python ≥ 3.10
 - sysrepo-python_ (and the underlying ``libsysrepo.so``)
-- sysrepo core ≥ 2022-08-26 (ships ``sysrepo-plugind@2022-08-26.yang``)
+- sysrepo core 4.2.10 (ships ``sysrepo-plugind@2022-08-26.yang``)
 
 
 Installation
