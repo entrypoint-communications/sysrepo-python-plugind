@@ -9,7 +9,7 @@ description = "Python plugin daemon for sysrepo (replacement for sysrepo-plugind
 readme = "README.rst"
 license = { text = "BSD-3-Clause" }
 requires-python = ">=3.10"
-dependencies = ["sysrepo"]
+dependencies = ["sysrepo~=2.0"]
 
 [project.scripts]
 sysrepo-python-plugind = "sysrepo_python_plugind:main"
