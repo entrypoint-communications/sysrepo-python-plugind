@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "example-system-plugin"
-version = "0.1.0"
+version = "0.1.1"
 description = "Example sysrepo-python-plugind plugin for the example-system YANG module"
 requires-python = ">=3.10"
 dependencies = ["sysrepo-python-plugind"]
