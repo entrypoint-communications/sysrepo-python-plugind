@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sysrepo-python-plugind"
-version = "0.1.2"
+version = "1.0.0"
 description = "Python plugin daemon for sysrepo (replacement for sysrepo-plugind)"
 readme = "README.rst"
-license = { text = "BSD-3-Clause" }
+license = "BSD-3-Clause"
 requires-python = ">=3.10"
 dependencies = ["sysrepo~=2.0"]
 
@@ -16,7 +16,7 @@ sysrepo-python-plugind = "sysrepo_python_plugind:main"
 sysrepo-python-plugind-setup = "sysrepo_python_plugind.install_yang:main"
 
 [project.urls]
-Repository = "https://github.com/..."
+Repository = "https://github.com/entrypoint-communications/sysrepo-python-plugind"
 
 [tool.setuptools.packages.find]
 where = ["src"]

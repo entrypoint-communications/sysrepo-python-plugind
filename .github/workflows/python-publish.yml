@@ -66,8 +66,8 @@ jobs:
     permissions:
       id-token: write
     environment:
-      name: testpypi
-      url: https://test.pypi.org/p/sysrepo-python-plugind
+      name: pypi
+      url: https://pypi.org/p/sysrepo-python-plugind
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v4
@@ -82,5 +82,3 @@ jobs:
       - run: python -m pip install --upgrade build
       - run: python -m build --outdir dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
