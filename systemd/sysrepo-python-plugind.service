@@ -1,6 +1,6 @@
 [Unit]
 Description=Sysrepo Python plugin daemon
-Documentation=https://github.com/...
+Documentation=https://github.com/entrypoint-communications/sysrepo-python-plugind
 # Adjust After= if your plugins require additional services (e.g. a NETCONF server).
 After=network.target
 

@@ -92,9 +92,11 @@ class PluginDaemon:
                     LOG.info(
                         "daemon ready, %d plugin(s) loaded", len(self._plugins)
                     )
-                    self._stop.wait()
+                    while not self._stop.wait(timeout=1.0):
+                        pass
                     LOG.info("shutting down")
                     _sd_notify("STOPPING=1")
+                    self._arm_exit_watchdog()
                     self._cleanup_plugins(sess)
         except Exception:
             LOG.exception("daemon error")
@@ -103,6 +105,25 @@ class PluginDaemon:
             self._stop_event_loop()
 
         return rc
+
+    # ------------------------------------------------------------------
+    # Shutdown watchdog
+
+    def _arm_exit_watchdog(self, timeout: float = 10.0) -> None:
+        """Force-exit if sysrepo cleanup stalls longer than *timeout* seconds.
+
+        Sysrepo's C library waits for its subscription threads to join when
+        a session or connection is closed.  Those threads can block indefinitely
+        if a callback is in-flight or stuck in a poll.  The watchdog fires
+        os._exit() so the process never has to wait for SIGKILL from systemd.
+        """
+        def _force() -> None:
+            LOG.warning("cleanup stalled after %.0f s, forcing exit", timeout)
+            os._exit(1)
+
+        t = threading.Timer(timeout, _force)
+        t.daemon = True
+        t.start()
 
     # ------------------------------------------------------------------
     # Signal handling
@@ -116,10 +137,11 @@ class PluginDaemon:
         ignored.
         """
         def _handler(sig: int, _frame) -> None:
+            sig_name = signal.Signals(sig).name
             if self._stop.is_set():
-                # Second signal while already shutting down → hard exit.
+                LOG.warning("received %s during shutdown, forcing exit", sig_name)
                 sys.exit(1)
-            LOG.info("received %s, initiating shutdown", signal.Signals(sig).name)
+            LOG.warning("received %s, initiating graceful shutdown", sig_name)
             self._stop.set()
 
         for sig in (

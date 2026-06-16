@@ -73,7 +73,12 @@ def main() -> int:
     if args.pid_file:
         return _run_with_pid(daemon, args.pid_file, debug=args.debug)
 
-    if not args.debug:
+    # When running under systemd (Type=notify), NOTIFY_SOCKET is set and the
+    # process must stay in the foreground so READY=1 is sent from the tracked
+    # main PID.  Daemonizing here would cause systemd to reject the notification
+    # from the forked grandchild and fail the service with result 'protocol'.
+    under_systemd = bool(os.environ.get("NOTIFY_SOCKET"))
+    if not args.debug and not under_systemd:
         _daemonize()
     return daemon.run()
 
@@ -94,9 +99,10 @@ def _run_with_pid(daemon: PluginDaemon, pid_path: str, debug: bool) -> int:
         int: Exit code from daemon.run(), or 1 if the PID file is already
             locked by another instance.
     """
+    under_systemd = bool(os.environ.get("NOTIFY_SOCKET"))
     try:
         with PidFile(pid_path) as pid_file:
-            if not debug:
+            if not debug and not under_systemd:
                 _daemonize()
             return daemon.run(pid_file)
     except RuntimeError as exc:
