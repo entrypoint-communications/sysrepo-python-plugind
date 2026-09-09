@@ -20,6 +20,12 @@ class SysrepoPlugin(ABC):
     :meth:`init` at startup (after plugin ordering), and :meth:`cleanup`
     at shutdown in reverse init order.  State that the C daemon stored in
     ``void *private_data`` should be stored as instance attributes.
+
+    Each plugin is given its own dedicated ``SysrepoSession``.  The same
+    session object is passed to :meth:`init` and later to :meth:`cleanup`;
+    the daemon stops it only after ``cleanup()`` returns.  (This differs
+    from the C ``sysrepo-plugind``, which shares a single session across
+    every plugin.)
     """
 
     @abstractmethod
@@ -28,11 +34,11 @@ class SysrepoPlugin(ABC):
 
         Called once after plugin ordering and before ``sd_notify("READY=1")``.
         Register sysrepo subscriptions and allocate resources here.  The
-        session is on ``SR_DS_RUNNING`` and is shared with all other plugins.
+        session is on ``SR_DS_RUNNING`` and is private to this plugin.
 
         Args:
-            session (sysrepo.session.SysrepoSession): Active running-datastore
-                session shared across all plugins.
+            session (sysrepo.session.SysrepoSession): This plugin's own
+                active running-datastore session.
 
         Raises:
             Exception: Signals rejection of this plugin.  With
@@ -44,13 +50,17 @@ class SysrepoPlugin(ABC):
         """Clean up plugin resources at daemon shutdown.
 
         Called once in reverse init order after a stop signal is received.
-        Sysrepo subscriptions created on the session are automatically
-        released when the session closes, so this method only needs to
+        The session passed here is the same one passed to :meth:`init`, and
+        is still open — subscriptions created on it can be explicitly
+        unsubscribed and the datastore can still be accessed.  The daemon
+        stops the session immediately after this method returns, which also
+        releases any subscriptions left on it, so this method only needs to
         release external resources (file handles, network connections, etc.).
 
         The default implementation does nothing.
 
         Args:
-            session (sysrepo.session.SysrepoSession): Active running-datastore
-                session shared across all plugins.
+            session (sysrepo.session.SysrepoSession): This plugin's own
+                running-datastore session (the same object passed to
+                :meth:`init`).
         """

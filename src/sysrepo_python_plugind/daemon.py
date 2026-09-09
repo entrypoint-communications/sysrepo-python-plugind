@@ -10,10 +10,11 @@ import socket
 import sys
 import threading
 from importlib.metadata import entry_points
-from typing import Optional
+from typing import List, Optional
 
 import sysrepo
 
+from .loaded_plugin import LoadedPlugin
 from .pid import PidFile
 from .plugin import SysrepoPlugin
 from .sort import PluginList, sort_plugins
@@ -54,7 +55,7 @@ class PluginDaemon:
     def __init__(self, fatal_fail: bool = False) -> None:
         self.fatal_fail = fatal_fail
         self._stop = threading.Event()
-        self._plugins: PluginList = []
+        self._plugins: List[LoadedPlugin] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_thread: Optional[threading.Thread] = None
 
@@ -84,7 +85,7 @@ class PluginDaemon:
         try:
             with sysrepo.SysrepoConnection() as conn:
                 with conn.start_session("running") as sess:
-                    self._init_plugins(sess)
+                    self._init_plugins(conn, sess)
                     self._publish_loaded(sess)
                     if pid_file is not None:
                         pid_file.write()
@@ -97,11 +98,14 @@ class PluginDaemon:
                     LOG.info("shutting down")
                     _sd_notify("STOPPING=1")
                     self._arm_exit_watchdog()
-                    self._cleanup_plugins(sess)
+                    self._cleanup_plugins()
         except Exception:
             LOG.exception("daemon error")
             rc = 1
         finally:
+            # Safety net: stop any plugin sessions not already stopped by
+            # _cleanup_plugins (e.g. when init raised with fatal_fail=True).
+            self._stop_plugin_sessions()
             self._stop_event_loop()
 
         return rc
@@ -223,16 +227,23 @@ class PluginDaemon:
                     raise
         return discovered
 
-    def _init_plugins(self, sess: sysrepo.session.SysrepoSession) -> None:
+    def _init_plugins(
+        self,
+        conn: sysrepo.SysrepoConnection,
+        sess: sysrepo.session.SysrepoSession,
+    ) -> None:
         """Discover, sort, and initialise all plugins.
 
         Calls _discover_plugins(), reorders the result via sort_plugins(),
-        then calls init() on each plugin.  Successfully initialised plugins
-        are appended to self._plugins.
+        then starts a dedicated running-datastore session for each plugin
+        and calls init() with it.  Successfully initialised plugins are
+        appended to self._plugins together with their session.
 
         Args:
-            sess (sysrepo.session.SysrepoSession): Active running-datastore session
-                passed to each plugin's init().
+            conn (sysrepo.SysrepoConnection): Connection used to start one
+                session per plugin.
+            sess (sysrepo.session.SysrepoSession): The daemon's own session,
+                used only to read the plugin order for sort_plugins().
 
         Raises:
             Exception: Re-raised from plugin init() when fatal_fail is True;
@@ -242,31 +253,52 @@ class PluginDaemon:
         plugins = sort_plugins(sess, plugins)
 
         for ep_name, inst in plugins:
+            plugin_sess = conn.start_session("running")
             try:
-                inst.init(sess)
-                self._plugins.append((ep_name, inst))
+                inst.init(plugin_sess)
+                self._plugins.append(LoadedPlugin(ep_name, inst, plugin_sess))
                 LOG.info("initialized plugin %r", ep_name)
             except Exception:
                 LOG.exception("plugin %r init() failed", ep_name)
+                with contextlib.suppress(Exception):
+                    plugin_sess.stop()
                 if self.fatal_fail:
                     raise
 
-    def _cleanup_plugins(self, sess: sysrepo.session.SysrepoSession) -> None:
+    def _cleanup_plugins(self) -> None:
         """Call cleanup() on all initialised plugins in reverse init order.
 
-        Exceptions from individual cleanup() calls are logged but do not
-        prevent the remaining plugins from being cleaned up.
+        Each plugin's cleanup() receives the same session that was passed to
+        its init().  The session is stopped only after cleanup() returns, so
+        the plugin can still unsubscribe and access the datastore through it.
 
-        Args:
-            sess (sysrepo.session.SysrepoSession): Active running-datastore session
-                passed to each plugin's cleanup().
+        Exceptions from individual cleanup() calls are logged but do not
+        prevent the remaining plugins from being cleaned up, and the session
+        is stopped regardless.
         """
-        for ep_name, inst in reversed(self._plugins):
+        while self._plugins:
+            loaded = self._plugins.pop()
             try:
-                inst.cleanup(sess)
-                LOG.info("cleaned up plugin %r", ep_name)
+                loaded.instance.cleanup(loaded.session)
+                LOG.info("cleaned up plugin %r", loaded.name)
             except Exception:
-                LOG.exception("plugin %r cleanup() raised", ep_name)
+                LOG.exception("plugin %r cleanup() raised", loaded.name)
+            finally:
+                with contextlib.suppress(Exception):
+                    loaded.session.stop()
+
+    def _stop_plugin_sessions(self) -> None:
+        """Stop any plugin sessions still open (error-path safety net).
+
+        _cleanup_plugins() normally stops each session as it goes; this
+        catches sessions left behind when initialisation aborted before the
+        graceful shutdown path ran.  Stopping an already-stopped session is
+        a no-op.
+        """
+        while self._plugins:
+            loaded = self._plugins.pop()
+            with contextlib.suppress(Exception):
+                loaded.session.stop()
 
     # ------------------------------------------------------------------
     # Operational datastore
@@ -293,9 +325,9 @@ class PluginDaemon:
         except sysrepo.SysrepoNotFoundError:
             pass
 
-        for ep_name, _ in self._plugins:
-            sess.set_item(_LOADED_XPATH, ep_name)
-            LOG.info("add plugin %r to operational datastore", ep_name)
+        for loaded in self._plugins:
+            sess.set_item(_LOADED_XPATH, loaded.name)
+            LOG.info("add plugin %r to operational datastore", loaded.name)
 
         sess.apply_changes()
         LOG.info("operational store update complete")

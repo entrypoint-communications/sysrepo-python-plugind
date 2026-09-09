@@ -89,6 +89,12 @@ Minimal example:
 State that the C daemon stored in ``void *private_data`` is stored as instance
 attributes (``self._counter`` above).
 
+Each plugin is given its own dedicated ``SysrepoSession``.  The same session
+object is passed to ``init()`` and later to ``cleanup()``, and the daemon
+stops it only after ``cleanup()`` returns — so ``cleanup()`` can still
+unsubscribe and access the datastore through it.  (The C ``sysrepo-plugind``
+shares a single session across every plugin; this daemon does not.)
+
 Async callbacks
 ~~~~~~~~~~~~~~~
 
